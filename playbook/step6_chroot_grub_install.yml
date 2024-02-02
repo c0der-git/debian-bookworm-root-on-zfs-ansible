@@ -1,0 +1,180 @@
+---
+- name: Step 4 - Install GRUB in the chroot
+  hosts: localhost
+  gather_facts: true
+  become: true
+
+  vars:
+    DISK1: "/dev/disk/by-id/ata-VMware_Virtual_SATA_Hard_Drive_00000000000000000001"
+
+  tasks:
+    - name: chroot - Install dosfstools
+      ansible.builtin.apt:
+        name: dosfstools
+        state: present
+        update_cache: yes
+      become: true
+
+    - name: chroot - Create EFI filesystem
+      ansible.builtin.command:
+        cmd: "mkdosfs -F 32 -s 1 -n EFI {{ DISK1 }}-part2"
+      become: true
+
+    - name: chroot - Create /boot/efi directory
+      ansible.builtin.file:
+        path: /boot/efi
+        state: directory
+      become: true
+
+    - name: chroot - Get UUID of ${DISK1}-part2
+      ansible.builtin.command:
+        cmd: "blkid -s UUID -o value {{ DISK1 }}-part2"
+      register: uuid_result
+
+    - name: chroot - Add EFI entry to /etc/fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: '/dev/disk/by-uuid/{{ uuid_result.stdout }} /boot/efi vfat defaults 0 0'
+        insertafter: EOF
+        create: yes
+      become: true
+
+    - name: chroot - Mount /boot/efi
+      command: "mount /boot/efi"
+      become: true
+
+    - name: chroot - Install grub-efi-amd64 and shim-signed
+      ansible.builtin.apt:
+        name:
+          - grub-efi-amd64
+          - shim-signed
+        state: present
+        update_cache: yes
+      become: true
+
+    - name: chroot - Set password non-interactively
+      command: "echo 'root:1q2w3e' | chpasswd"
+
+    - name: chroot - Create ZFS Import Service file
+      ansible.builtin.blockinfile:
+        path: /etc/systemd/system/zfs-import-bpool.service
+        block: |
+          [Unit]
+          DefaultDependencies=no
+          Before=zfs-import-scan.service
+          Before=zfs-import-cache.service
+
+          [Service]
+          Type=oneshot
+          RemainAfterExit=yes
+          ExecStart=/sbin/zpool import -N -o cachefile=none bpool
+          # Work-around to preserve zpool cache:
+          ExecStartPre=-/bin/mv /etc/zfs/zpool.cache /etc/zfs/preboot_zpool.cache
+          ExecStartPost=-/bin/mv /etc/zfs/preboot_zpool.cache /etc/zfs/zpool.cache
+
+          [Install]
+          WantedBy=zfs-import.target
+        create: yes
+      become: true
+
+    - name: chroot - Enable zfs-import-bpool.service
+      ansible.builtin.systemd:
+        name: zfs-import-bpool.service
+        enabled: yes
+      become: true
+
+    - name: chroot - Install openssh-server
+      ansible.builtin.apt:
+        name: openssh-server
+        state: present
+        update_cache: yes
+      become: true
+
+    - name: chroot - Configure sshd_config
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#PermitRootLogin'
+        line: 'PermitRootLogin yes'
+      become: true
+
+    - name: chroot - Run grub-probe
+      command: "grub-probe /boot"
+      become: true     
+
+    - name: chroot - Run update-initramfs
+      command: "update-initramfs -c -k all"
+      become: true     
+
+    - name: chroot - Set GRUB_CMDLINE_LINUX
+      ansible.builtin.lineinfile:
+        path: /etc/default/grub
+        regexp: '^GRUB_CMDLINE_LINUX='
+        line: 'GRUB_CMDLINE_LINUX="root=ZFS=rpool/ROOT/debian"'
+      become: true
+
+    - name: chroot - Remove 'quiet' from GRUB_CMDLINE_LINUX_DEFAULT
+      ansible.builtin.lineinfile:
+        path: /etc/default/grub
+        regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+        line: 'GRUB_CMDLINE_LINUX_DEFAULT=""'
+      become: true
+
+    - name: chroot - Uncomment GRUB_TERMINAL=console
+      ansible.builtin.lineinfile:
+        path: /etc/default/grub
+        regexp: '^#?GRUB_TERMINAL=console'
+        line: 'GRUB_TERMINAL=console'
+      become: true      
+
+    - name: chroot - Update grub configuration
+      command: "update-grub"
+      become: true      
+
+    - name: chroot - Install GRUB for UEFI      
+      command: >-
+        grub-install
+        --target=x86_64-efi
+        --efi-directory=/boot/efi
+        --bootloader-id=debian
+        --recheck
+        --no-floppy
+
+    - name: chroot - Create /etc/zfs/zfs-list.cache/ directory
+      ansible.builtin.file:
+        path: /etc/zfs/zfs-list.cache/
+        state: directory
+      become: true
+
+    - name: chroot - Touch files
+      ansible.builtin.file:
+        path: "/etc/zfs/zfs-list.cache/{{ item }}"
+        state: touch
+      loop:
+        - bpool
+        - rpool      
+
+    - name: chroot - Run zed in background
+      ansible.builtin.shell:
+        cmd: "zed -F &"
+      async: 0
+      poll: 0        
+
+    - name: chroot - Wait for zed to update the cache
+      ansible.builtin.wait_for:
+        path: "/etc/zfs/zfs-list.cache/bpool"
+        state: present
+        timeout: 60
+
+    - name: chroot - Stop zed
+      ansible.builtin.shell:
+        cmd: "pkill -f zed"
+      ignore_errors: yes
+
+    - name: chroot - Fix paths to eliminate /mnt
+      ansible.builtin.replace:
+        path: "/etc/zfs/zfs-list.cache/{{ item }}"
+        regexp: '/mnt/?'
+        replace: '/'
+      loop:
+        - bpool
+        - rpool

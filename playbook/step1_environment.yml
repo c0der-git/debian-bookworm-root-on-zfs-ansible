@@ -1,0 +1,47 @@
+---
+- name: Step 1 - Prepare The Install Environment
+  hosts: localhost
+  become: true
+
+  tasks:
+    - name: Adding non-free-firmware repository (1 of 2)
+      lineinfile:
+        path: /etc/apt/sources.list
+        regexp: '^deb http://deb.debian.org/debian/ bookworm main'
+        line: 'deb http://deb.debian.org/debian bookworm main contrib non-free-firmware'
+
+    - name: Adding non-free-firmware repository (2 of 2)
+      lineinfile:
+        path: /etc/apt/sources.list
+        regexp: '^deb-src http://deb.debian.org/debian/ bookworm main'
+        line: 'deb http://deb.debian.org/debian bookworm main contrib non-free-firmware' 
+
+    - name: Update repositories
+      apt:
+        update_cache: yes
+      become: yes
+
+    - name: Install OpenSSH server
+      apt:
+        name: openssh-server
+        state: present
+      become: yes
+
+    - name: Enable and start OpenSSH service
+      systemd:
+        name: ssh
+        enabled: yes
+        state: started
+      become: yes
+
+    - name: Install additional packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - debootstrap
+        - gdisk
+        - zfsutils-linux
+        - vim
+      become: yes
+

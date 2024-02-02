@@ -1,0 +1,73 @@
+---
+- name: Step 4 - System configuration
+  hosts: localhost
+  gather_facts: true
+  become: true
+
+  vars:
+    HOST_NAME: "debian"
+    IFACENAME: "ens160"
+    SOURCESFILE: "/mnt/etc/apt/sources.list"
+    DISK1: "/dev/disk/by-id/ata-VMware_Virtual_SATA_Hard_Drive_00000000000000000001"
+
+
+  tasks:
+    - name: Set hostname in /mnt/etc/hostname
+      ansible.builtin.lineinfile:
+        path: /mnt/etc/hostname
+        line: "{{ HOST_NAME }}"
+
+    - name: Update hostname and IP in /mnt/etc/hosts
+      ansible.builtin.lineinfile:
+        path: /mnt/etc/hosts
+        line: 127.0.1.1 {{ HOST_NAME }}
+
+    - name: Ensure network interface file exists
+      ansible.builtin.file:
+        path: '/mnt/etc/network/interfaces.d/{{ IFACENAME }}'
+        state: touch
+
+    - name: Enable DHCP in /mnt/etc/network/interfaces.d/{{ IFACENAME }}
+      ansible.builtin.lineinfile:
+        path: '/mnt/etc/network/interfaces.d/{{ IFACENAME }}'
+        line: "{{ item }}"
+        insertbefore: EOF
+      loop:
+        - 'auto {{ IFACENAME }}'
+        - 'iface {{ IFACENAME }} inet dhcp'
+
+    - name: Disable "main" repository (1 of 3) in /mnt/etc/apt/sources.list
+      command: 'sed -i "/bookworm main/ s/^/#/" "{{ SOURCESFILE }}"'
+
+    - name: Disable "security" repository (2 of 3) in /mnt/etc/apt/sources.list
+      command: 'sed -i "/bookworm-security/ s/^/#/" "{{ SOURCESFILE }}"'
+
+    - name: Disable "bookworm-updates" repository (3 of 3) in /mnt/etc/apt/sources.list
+      command: 'sed -i "/bookworm-updates/ s/^/#/" "{{ SOURCESFILE }}"'
+
+    - name: Add non-free-firmware repository to /mnt/etc/apt/sources.list
+      ansible.builtin.blockinfile:
+        path: "{{ SOURCESFILE }}"
+        block: |
+          #bookworm main
+          deb http://deb.debian.org/debian bookworm main contrib non-free-firmware
+          deb-src http://deb.debian.org/debian bookworm main contrib non-free-firmware
+          #bookworm security
+          deb http://deb.debian.org/debian-security bookworm-security main contrib non-free-firmware
+          deb-src http://deb.debian.org/debian-security bookworm-security main contrib non-free-firmware
+          #bookworm updates
+          deb http://deb.debian.org/debian bookworm-updates main contrib non-free-firmware
+          deb-src http://deb.debian.org/debian bookworm-updates main contrib non-free-firmware
+
+    - name: Mount /dev to /mnt/dev
+      command: "mount --make-private --rbind /dev /mnt/dev"
+
+    - name: Mount /proc to /mnt/proc
+      command: "mount --make-private --rbind /proc /mnt/proc"
+
+    - name: Mount /sys to /mnt/sys
+      command: "mount --make-private --rbind /sys /mnt/sys"
+
+    - name: Print message
+      ansible.builtin.debug:
+        msg: 'Switch to chroot: chroot /mnt /usr/bin/env DISK={{ DISK1 }} bash --login'

@@ -1,0 +1,11 @@
+---
+- name: Step 0 - Wipe all data
+  hosts: localhost
+  become: true
+
+  tasks:
+  - name: Destroying zfs datasets
+    command: "zfs list -H -o name | xargs -n 1 zfs destroy -r"
+  
+  - name: Destroying zfs pools
+    command: "zpool list -H -o name | xargs -n 1 zpool destroy"

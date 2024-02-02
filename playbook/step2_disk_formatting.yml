@@ -1,0 +1,80 @@
+---
+- name: Step 2 - Disk formatting
+  hosts: localhost
+  gather_facts: true
+  become: true
+
+  vars:
+    DISK1: "/dev/disk/by-id/ata-VMware_Virtual_SATA_Hard_Drive_00000000000000000001"
+    DISK2: "/dev/disk/by-id/ata-VMware_Virtual_SATA_Hard_Drive_02000000000000000001"
+
+  tasks:
+    - name: Clear the partition table on DISK1
+      command: sgdisk --zap-all "{{ DISK1 }}"
+
+    - name: Clear the partition table on DISK2
+      command: sgdisk --zap-all "{{ DISK2 }}"
+
+    - name: Turn off all swap
+      command: swapoff --all
+
+    - name: Create (2) partition for UEFI booting on DISK1
+      command: sgdisk -n2:1M:+512M -t2:EF00 "{{ DISK1 }}"
+
+    - name: Create (2) partition for UEFI booting on DISK2
+      command: sgdisk -n2:1M:+512M -t2:EF00 "{{ DISK2 }}"
+
+    - name: Create (3) partition for a boot pool on DISK1
+      command: sgdisk -n3:0:+1G -t3:BF01 "{{ DISK1 }}"
+
+    - name: Create (3) partition for a boot pool on DISK2
+      command: sgdisk -n3:0:+1G -t3:BF01 "{{ DISK2 }}"
+
+    - name: Create (4) partition for unencrypted or ZFS native encryption on DISK1
+      command: sgdisk -n4:0:0 -t4:BF00 "{{ DISK1 }}"
+
+    - name: Create (4) partition for unencrypted or ZFS native encryption on DISK2
+      command: sgdisk -n4:0:0 -t4:BF00 "{{ DISK2 }}"
+
+    - name: Enable ZFS
+      command: modprobe zfs
+
+    - name: Create zpool mirror for /BOOT on DISK1, DISK2
+      command: >-
+        zpool create
+        -o ashift=12
+        -o autotrim=on
+        -o compatibility=grub2
+        -o cachefile=/etc/zfs/zpool.cache
+        -O devices=off
+        -O acltype=posixacl
+        -O xattr=sa
+        -O compression=lz4
+        -O normalization=formD
+        -O relatime=on
+        -O canmount=off
+        -O mountpoint=/boot
+        -R /mnt
+        bpool mirror
+        {{ DISK1 }}-part3
+        {{ DISK2 }}-part3
+      args:
+        executable: /bin/bash
+
+    - name: Create zpool mirror "rpool" on DISK1, DISK2
+      command: >-
+        zpool create
+        -o ashift=12
+        -o autotrim=on
+        -O acltype=posixacl
+        -O xattr=sa
+        -O dnodesize=auto
+        -O compression=lz4
+        -O normalization=formD
+        -O relatime=on
+        -O canmount=off
+        -O mountpoint=/
+        -R /mnt
+        -f rpool mirror
+        {{ DISK1 }}-part4
+        {{ DISK2 }}-part4

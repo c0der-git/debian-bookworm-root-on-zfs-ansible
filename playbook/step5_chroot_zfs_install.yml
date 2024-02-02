@@ -1,0 +1,84 @@
+---
+- name: Step 4 - Install ZFS in the chroot
+  hosts: localhost
+  gather_facts: true
+  become: true
+
+  vars:
+    DISK1: "/dev/disk/by-id/ata-VMware_Virtual_SATA_Hard_Drive_00000000000000000001"
+
+  tasks:
+    - name: chroot - Update apt package list
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: chroot - Install console-setup and locales
+      ansible.builtin.apt:
+        name:
+          - console-setup
+          - locales
+        state: present
+        update_cache: yes
+
+    - name: chroot - Install locales with default values
+      ansible.builtin.debconf:
+        name: locales
+        question: locales/locales_to_be_generated
+        value: "en_US.UTF-8 UTF-8"
+        vtype: string
+      become: true
+
+    - name: chroot - Install timezone with default values
+      ansible.builtin.debconf:
+        name: tzdata
+        question: tzdata/Zones/Etc
+        value: "Europe/Moscow"
+        vtype: string
+      become: true
+
+    - name: chroot - Install console-setup with default values
+      ansible.builtin.debconf:
+        name: console-setup
+        question: console-setup/charmap
+        value: "UTF-8"
+        vtype: string
+      become: true
+
+    - name: chroot - Install keyboard-configuration with default values
+      ansible.builtin.debconf:
+        name: keyboard-configuration
+        question: keyboard-configuration/layoutcode
+        value: "us"
+        vtype: string
+      become: true
+
+    - name: chroot - Install dpkg-dev, linux headers, and linux image
+      ansible.builtin.apt:
+        name:
+          - dpkg-dev
+          - linux-headers-generic
+          - linux-image-generic
+        state: present
+        update_cache: yes
+      become: true
+
+    - name: chroot - Install zfs-initramfs
+      ansible.builtin.apt:
+        name: zfs-initramfs
+        state: present
+        update_cache: yes
+      become: true
+
+    - name: chroot - Configure ZFS dkms
+      ansible.builtin.lineinfile:
+        path: /etc/dkms/zfs.conf
+        line: 'REMAKE_INITRD=yes'
+        create: yes
+      become: true
+
+    - name: chroot - Install systemd-timesyncd
+      ansible.builtin.apt:
+        name: systemd-timesyncd
+        state: present
+        update_cache: yes
+      become: true

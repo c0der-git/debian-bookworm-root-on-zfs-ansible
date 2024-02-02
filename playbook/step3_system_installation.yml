@@ -1,0 +1,110 @@
+---
+- name: Step 3 - System installation
+  hosts: localhost
+  become: true
+
+  tasks:
+    - name: Create zfs container dataset - rpool
+      command: "zfs create -o canmount=off -o mountpoint=none rpool/ROOT"
+
+    - name: Create zfs container dataset - bpool
+      command: "zfs create -o canmount=off -o mountpoint=none bpool/BOOT"
+
+    - name: Create zfs dataset - rpool/ROOT/debian
+      command: "zfs create -o canmount=noauto -o mountpoint=/ rpool/ROOT/debian"
+
+    - name: Mount ROOT to rpool
+      command: "zfs mount rpool/ROOT/debian"
+
+    - name: Create zfs dataset - bpool/BOOT/debian
+      command: "zfs create -o mountpoint=/boot bpool/BOOT/debian"
+
+    - name: Create zfs dataset - rpool/home
+      command: "zfs create rpool/home"
+
+    - name: Create zfs dataset - rpool/home/root
+      command: "zfs create -o mountpoint=/root rpool/home/root"
+
+    - name: Set permissions on /mnt/root
+      file:
+        path: /mnt/root
+        state: directory
+        mode: '0700'
+
+    - name: Create zfs dataset - rpool/var
+      command: "zfs create -o canmount=off rpool/var"
+
+    - name: Create zfs dataset - rpool/var/lib
+      command: "zfs create -o canmount=off rpool/var/lib"
+
+    - name: Create zfs dataset - rpool/var/log
+      command: "zfs create rpool/var/log"
+
+    - name: Create zfs dataset - rpool/var/spool
+      command: "zfs create rpool/var/spool"
+
+    - name: Create zfs dataset - rpool/var/cache
+      command: "zfs create -o com.sun:auto-snapshot=false rpool/var/cache"
+
+    - name: Create zfs dataset - rpool/var/lib/nfs
+      command: "zfs create -o com.sun:auto-snapshot=false rpool/var/lib/nfs"
+
+    - name: Create zfs dataset - rpool/var/tmp
+      command: "zfs create -o com.sun:auto-snapshot=false rpool/var/tmp"
+
+    - name: Set permissions on /mnt/var/tmp
+      file:
+        path: /mnt/var/tmp
+        state: directory
+        mode: '1777'
+
+    - name: Create zfs dataset - rpool/usr
+      command: "zfs create -o canmount=off rpool/usr"
+
+    - name: Create zfs dataset - rpool/usr/local
+      command: "zfs create rpool/usr/local"
+
+    - name: Create zfs dataset - rpool/var/lib/docker
+      command: "zfs create -o com.sun:auto-snapshot=false rpool/var/lib/docker"
+
+    - name: Create zfs dataset - rpool/var/www
+      command: "zfs create rpool/var/www"
+
+    - name: Create zfs dataset - rpool/tmp
+      command: "zfs create -o com.sun:auto-snapshot=false  rpool/tmp"
+
+    - name: Set permissions on /mnt/tmp
+      file:
+        path: /mnt/tmp
+        state: directory
+        mode: '1777'
+
+    - name: Create /mnt/run directory
+      ansible.builtin.file:
+        path: /mnt/run
+        state: directory
+
+    - name: Mount tmpfs on /mnt/run
+      ansible.builtin.mount:
+        path: /mnt/run
+        src: tmpfs
+        fstype: tmpfs
+        state: mounted
+
+    - name: Create /mnt/run/lock directory
+      ansible.builtin.file:
+        path: /mnt/run/lock
+        state: directory
+
+    - name: Install the minimal system
+      command: "debootstrap bookworm /mnt"
+
+    - name: Create /mnt/etc/zfs directory
+      ansible.builtin.file:
+        path: /mnt/etc/zfs
+        state: directory
+
+    - name: Copy zpool.cache to /mnt/etc/zfs/
+      ansible.builtin.copy:
+        src: /etc/zfs/zpool.cache
+        dest: /mnt/etc/zfs/      
