@@ -4,8 +4,8 @@
 
   vars:
     username: user  # Replace with the desired username
-    source_disk_id: "/dev/disk/by-id/ata-VMware_Virtual_SATA_Hard_Drive_00000000000000000001"
-    target_disk_id: "/dev/disk/by-id/ata-VMware_Virtual_SATA_Hard_Drive_02000000000000000001"
+    source_disk_id: "ata-VMware_Virtual_SATA_Hard_Drive_00000000000000000001"
+    target_disk_id: "ata-VMware_Virtual_SATA_Hard_Drive_02000000000000000001"
     target_label: "debian-2"
     zfs_swap_volume_name: "rpool/swap"
     zfs_swap_device: "/dev/zvol/rpool/swap"
