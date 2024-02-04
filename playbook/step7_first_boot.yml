@@ -1,0 +1,107 @@
+---
+- name: Step 6 - First boot
+  hosts: localhost  # Assuming this playbook is run locally
+
+  vars:
+    username: user  # Replace with the desired username
+    source_disk_id: "/dev/disk/by-id/ata-VMware_Virtual_SATA_Hard_Drive_00000000000000000001"
+    target_disk_id: "/dev/disk/by-id/ata-VMware_Virtual_SATA_Hard_Drive_02000000000000000001"
+    target_label: "debian-2"
+    zfs_swap_volume_name: "rpool/swap"
+    zfs_swap_device: "/dev/zvol/rpool/swap"
+    volume_size: "1G"
+    page_size: "{{ ansible_memtotal_mb * 1024 / ansible_processor_cores }}"  # Calculate page size dynamically based on system configuration
+
+
+  tasks:
+    - name: Create ZFS dataset for the user's home directory
+      become: yes
+      become_user: root
+      command: zfs create rpool/home/{{ username }}
+      
+    - name: Add user
+      become: yes
+      become_user: root
+      user:
+        name: "{{ username }}"
+        state: present
+      
+    - name: Copy skeleton files to user's home directory
+      become: yes
+      become_user: root
+      command: cp -a /etc/skel/. /home/{{ username }}
+      
+    - name: Set ownership of user's home directory
+      become: yes
+      become_user: root
+      file:
+        path: /home/{{ username }}
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        recurse: yes
+      
+    - name: Add user to additional groups
+      become: yes
+      become_user: root
+      user:
+        name: "{{ username }}"
+        groups: audio,cdrom,dip,floppy,netdev,plugdev,sudo,video
+        append: yes
+
+    - name: Unmount /boot/efi
+      become: yes
+      become_user: root
+      command: umount /boot/efi
+
+    - name: Duplicate partition 2 from the source disk to the target disk
+      become: yes
+      become_user: root
+      command: "dd if=/dev/disk/by-id/{{ source_disk_id }}-part2 of=/dev/disk/by-id/{{ target_disk_id }}-part2 bs=4M"
+
+    - name: Add EFI boot entry for the duplicated disk
+      become: yes
+      become_user: root
+      command: "efibootmgr -c -g -d /dev/disk/by-id/{{ target_disk_id }} -p 2 -L '{{ target_label }}' -l '\\EFI\\debian\\grubx64.efi'"
+
+    - name: Mount /boot/efi on the duplicated disk
+      become: yes
+      become_user: root
+      command: "mount /dev/disk/by-id/{{ target_disk_id }} /boot/efi"
+
+    - name: Create ZFS Swap Volume
+      become: yes
+      become_user: root
+      command: >
+        zfs create -V {{ volume_size }}
+        -b {{ page_size }}
+        -o compression=zle
+        -o logbias=throughput
+        -o sync=always
+        -o primarycache=metadata
+        -o secondarycache=none
+        -o com.sun:auto-snapshot=false
+        {{ zfs_swap_volume_name }}
+
+    - name: Format ZFS Swap
+      become: yes
+      become_user: root
+      command: "mkswap -f {{ zfs_swap_device }}"
+
+    - name: Add ZFS Swap to /etc/fstab
+      become: yes
+      become_user: root
+      lineinfile:
+        path: /etc/fstab
+        line: "{{ zfs_swap_device }} none swap discard 0 0"
+
+    - name: Configure resume in /etc/initramfs-tools/conf.d/resume
+      become: yes
+      become_user: root
+      lineinfile:
+        path: /etc/initramfs-tools/conf.d/resume
+        line: "RESUME=none"
+
+    - name: Enable ZFS Swap
+      become: yes
+      become_user: root
+      command: "swapon -av"
