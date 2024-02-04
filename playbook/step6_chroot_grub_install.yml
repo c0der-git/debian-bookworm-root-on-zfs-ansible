@@ -183,3 +183,7 @@
       loop:
         - bpool
         - rpool
+
+    - name: Print message
+      ansible.builtin.debug:
+        msg: 'Please unmount all filesystems; zpool import -f rpool; exit and reboot'        
