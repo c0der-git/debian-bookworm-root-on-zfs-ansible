@@ -10,8 +10,7 @@
     zfs_swap_volume_name: "rpool/swap"
     zfs_swap_device: "/dev/zvol/rpool/swap"
     volume_size: "1G"
-    page_size: "{{ ansible_memtotal_mb * 1024 / ansible_processor_cores }}"  # Calculate page size dynamically based on system configuration
-
+    initramfs_tools_conf_d_path: "/etc/initramfs-tools/conf.d"
 
   tasks:
     - name: Create ZFS dataset for the user's home directory
@@ -66,7 +65,16 @@
     - name: Mount /boot/efi on the duplicated disk
       become: yes
       become_user: root
-      command: "mount /dev/disk/by-id/{{ target_disk_id }} /boot/efi"
+      command: "mount /boot/efi"
+
+    - name: Get system page size
+      become: yes
+      become_user: root
+      command: "getconf PAGESIZE"
+      register: page_size_result
+
+    - set_fact:
+        page_size: "{{ page_size_result.stdout | int }}"      
 
     - name: Create ZFS Swap Volume
       become: yes
@@ -94,11 +102,23 @@
         path: /etc/fstab
         line: "{{ zfs_swap_device }} none swap discard 0 0"
 
+    - name: Create initramfs-tools/conf.d directory if it doesn't exist
+      become: yes
+      become_user: root
+      file:
+        path: "{{ initramfs_tools_conf_d_path }}"
+        state: directory
+
+    - name: Ensure network interface file exists
+      ansible.builtin.file:
+        path: '{{ initramfs_tools_conf_d_path }}/resume'
+        state: touch
+
     - name: Configure resume in /etc/initramfs-tools/conf.d/resume
       become: yes
       become_user: root
       lineinfile:
-        path: /etc/initramfs-tools/conf.d/resume
+        path: "{{ initramfs_tools_conf_d_path }}/resume"
         line: "RESUME=none"
 
     - name: Enable ZFS Swap
