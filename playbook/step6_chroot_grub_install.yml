@@ -6,6 +6,8 @@
 
   vars:
     DISK1: "/dev/disk/by-id/ata-VMware_Virtual_SATA_Hard_Drive_00000000000000000001"
+    SUSER: "root"
+    SPWD: "1q2w3e"
 
   tasks:
     - name: chroot - Install dosfstools
@@ -52,8 +54,11 @@
         update_cache: yes
       become: true
 
-    - name: chroot - Set password non-interactively
-      command: "echo 'root:1q2w3e' | chpasswd"
+    - name: chroot - Change password
+      ansible.builtin.user:
+        name: "{{ SUSER }}"
+        state: present
+        password: "{{ SPWD | password_hash('sha512') }}"
 
     - name: chroot - Create ZFS Import Service file
       ansible.builtin.blockinfile:
