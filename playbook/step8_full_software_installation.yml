@@ -1,0 +1,39 @@
+---
+- name: Step 8 - Full Software Installation
+  hosts: localhost  # Assuming this playbook is run locally
+
+  tasks:
+    - name: Run apt dist-upgrade
+      become: yes
+      become_user: root
+      apt:
+        upgrade: dist
+        update_cache: yes
+        autoremove: yes
+        autoclean: yes
+        force_apt_get: yes
+        install_recommends: yes
+        state: latest
+
+    - name: Pre-seed tasksel
+      become: yes
+      become_user: root
+      debconf:
+        name: "tasksel"
+        question: "tasksel/new-install"
+        vtype: "select"
+        value: "minimal"
+
+    - name: Disable log rotation compression
+      become: yes
+      become_user: root
+      shell: |
+        for file in /etc/logrotate.d/* ; do
+          if grep -Eq "(^|[^#y])compress" "$file" ; then
+            sed -i -r "s/(^|[^#y])(compress)/\\1#\\2/" "$file"
+          fi
+        done
+
+    - name: Print message
+      ansible.builtin.debug:
+        msg: 'Installation compteled. You can reboot now'        
